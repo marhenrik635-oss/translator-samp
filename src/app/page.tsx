@@ -13,13 +13,13 @@ import {
   Terminal,
   Shield, 
   Wrench, 
-  Skull, 
   Radio, 
   MessageSquare,
   Clock,
   Trash2,
-  HelpCircle,
-  Cpu
+  Cpu,
+  Sliders,
+  ChevronDown
 } from 'lucide-react';
 import { SAMPPreviewBox } from '@/components/SAMPPreviewBox';
 import { SlangGlossaryModal } from '@/components/SlangGlossaryModal';
@@ -31,6 +31,7 @@ interface TranslationOutput {
   alternatives: { label: string; text: string }[];
   notes: string;
   modelUsed: string;
+  slangLevel?: string;
 }
 
 interface HistoryItem {
@@ -41,67 +42,88 @@ interface HistoryItem {
   persona: string;
   commandType: string;
   characterName: string;
+  slangLevel: string;
   timestamp: number;
 }
 
 const PERSONAS = [
   {
     id: 'uk_biker',
-    label: 'UK Biker / Rocker',
+    label: 'White UK Biker / Rocker',
     icon: Flame,
     color: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
-    desc: 'Ace Cafe London, Norton, Triumph, thumper, ton-up, mate, innit'
-  },
-  {
-    id: 'hood',
-    label: 'West Coast Hood',
-    icon: Skull,
-    color: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
-    desc: 'Grove / Ballas, street gang, homie, dog, turf, piece, ain\'t'
-  },
-  {
-    id: 'chicano',
-    label: 'Chicano Vato',
-    icon: Sparkles,
-    color: 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10',
-    desc: 'Latino street style, vato, carnal, esse, lowrider, chopper'
+    desc: 'Ace Cafe, Norton, Triumph, ton-up, mate, bloke, lad, reckon (No black slang)'
   },
   {
     id: 'mechanic',
     label: 'Mechanic / Garage',
     icon: Wrench,
     color: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
-    desc: 'Bengkel mesin, bodywork, torque, scrap components, repair'
+    desc: 'Bengkel motor & mobil, mesin, karburator, bodywork, torque, scrap parts'
+  },
+  {
+    id: 'chicano',
+    label: 'Chicano Chopper',
+    icon: Sparkles,
+    color: 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10',
+    desc: 'Latino street rider, vato, carnal, custom chopper, old-school'
   },
   {
     id: 'police',
     label: 'Police / SAPD',
     icon: Shield,
     color: 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10',
-    desc: 'Tactical radio 10-codes, authoritative legal commands'
+    desc: 'Radio 10-codes (10-4, 10-20), taktis, formal penegak hukum'
   },
   {
     id: 'mobster',
-    label: 'Italian Mafia',
+    label: 'Wise Guy / Mob',
     icon: Terminal,
     color: 'text-purple-400 border-purple-500/30 bg-purple-500/10',
-    desc: 'Wise guy, capisce, fella, business, discrete mafia tone'
+    desc: 'Discrete tone, business, capisce, respectful'
   },
   {
     id: 'casual',
-    label: 'Casual Street',
+    label: 'Natural RP (Clean)',
     icon: MessageSquare,
     color: 'text-slate-300 border-slate-600/30 bg-slate-800/40',
-    desc: 'Bahasa Inggris gaul santai, natural, anti-kaku'
+    desc: 'Bahasa Inggris percakapan santai, jernih, luwes, anti-kaku'
+  }
+];
+
+const SLANG_LEVELS = [
+  {
+    id: 'none',
+    label: 'Tanpa Slang (0%)',
+    badge: 'Standard Clean',
+    desc: 'Bahasa Inggris santai natural tanpa istilah jalanan'
+  },
+  {
+    id: 'light',
+    label: 'Slang Ringan (30%)',
+    badge: 'Rekomendasi',
+    desc: 'Hanya sentuhan santai (mate, reckon, proper) — tidak berlebihan'
+  },
+  {
+    id: 'medium',
+    label: 'Slang Sedang (60%)',
+    badge: 'Balanced RP',
+    desc: 'Cita rasa roleplay seimbang, natural street flow'
+  },
+  {
+    id: 'heavy',
+    label: 'Slang Kental (100%)',
+    badge: 'Full Biker Lore',
+    desc: 'Kental dengan istilah White UK Biker / Rocker (thumper, ton, lid, etc.)'
   }
 ];
 
 const QUICK_PROMPTS = [
   "Bro, mesin motor tua gue suaranya kasar pas digeber, tolong cekin di bengkel lu dong",
-  "Lu mau cari masalah sama gua hah? Jangan main-main lu",
-  "Cabut woi, ada silop lagi patroli di sekitar sini!",
-  "Gua ga terima lu nuduh gua cepu di depan anak-anak tongkrongan!",
-  "Santai dulu bang, kita omongin baik-baik sambil ngopi santai",
+  "Lu mau cari masalah sama gua hah? Jangan macem-macem lu",
+  "Cabut woi, ada polisi lagi patroli di sekitar sini!",
+  "Gua ga terima lu nuduh gua cepu di depan anak-anak!",
+  "Santai dulu kawan, kita omongin baik-baik sambil ngopi",
   "Ambil obeng dan kunci pas dari tas lalu mulai benerin karburator motor"
 ];
 
@@ -110,10 +132,20 @@ export default function TranslatorPage() {
   const [endpoint, setEndpoint] = useState('https://rnrbmqc.abc-tunnel.us/v1');
   const [apiKey, setApiKey] = useState('sk-dccd02cc8ccf53e8-zqx07k-0f0bc410');
   const [model, setModel] = useState('oc/mimo-v2.6-flash-free');
+  const [availableModels, setAvailableModels] = useState<{ id: string; owned_by?: string; context_length?: number }[]>([
+    { id: 'oc/mimo-v2.6-flash-free' },
+    { id: 'oc/deepseek-v4-flash-free' },
+    { id: 'oc/glm-5.3-flash-free' },
+    { id: 'oc/nemotron-3.5-lightning-free' },
+    { id: 'oc/mimo-v2.5-free' },
+    { id: 'cl/openai/gpt-4o' },
+    { id: 'getunikey/gemini-3.5-flash' },
+  ]);
   
   // App state
   const [characterName, setCharacterName] = useState('Harold Ortega');
   const [persona, setPersona] = useState('uk_biker');
+  const [slangLevel, setSlangLevel] = useState('light');
   const [commandType, setCommandType] = useState('says');
   const [inputPrompt, setInputPrompt] = useState('');
   
@@ -130,20 +162,44 @@ export default function TranslatorPage() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load saved state from localStorage
+  // Load saved state & auto-fetch models
   useEffect(() => {
     try {
       const savedEndpoint = localStorage.getItem('samp_endpoint');
       const savedKey = localStorage.getItem('samp_apikey');
       const savedModel = localStorage.getItem('samp_model');
       const savedChar = localStorage.getItem('samp_charname');
+      const savedSlang = localStorage.getItem('samp_slang_level');
       const savedHistory = localStorage.getItem('samp_history');
+      const savedModels = localStorage.getItem('samp_scraped_models');
 
       if (savedEndpoint) setEndpoint(savedEndpoint);
       if (savedKey) setApiKey(savedKey);
       if (savedModel) setModel(savedModel);
       if (savedChar) setCharacterName(savedChar);
+      if (savedSlang) setSlangLevel(savedSlang);
       if (savedHistory) setHistory(JSON.parse(savedHistory));
+      if (savedModels) setAvailableModels(JSON.parse(savedModels));
+
+      // Auto scrape if never fetched
+      if (!savedModels) {
+        fetch('/api/models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoint: savedEndpoint || 'https://rnrbmqc.abc-tunnel.us/v1',
+            apiKey: savedKey || 'sk-dccd02cc8ccf53e8-zqx07k-0f0bc410'
+          })
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data.models && data.models.length > 0) {
+              setAvailableModels(data.models);
+              localStorage.setItem('samp_scraped_models', JSON.stringify(data.models));
+            }
+          })
+          .catch(e => console.warn('Background model fetch error:', e));
+      }
     } catch (e) {
       console.warn('LocalStorage load error', e);
     }
@@ -156,10 +212,14 @@ export default function TranslatorPage() {
       localStorage.setItem('samp_apikey', apiKey);
       localStorage.setItem('samp_model', model);
       localStorage.setItem('samp_charname', characterName);
+      localStorage.setItem('samp_slang_level', slangLevel);
+      if (availableModels.length > 0) {
+        localStorage.setItem('samp_scraped_models', JSON.stringify(availableModels));
+      }
     } catch (e) {
       console.warn('LocalStorage save error', e);
     }
-  }, [endpoint, apiKey, model, characterName]);
+  }, [endpoint, apiKey, model, characterName, slangLevel, availableModels]);
 
   const handleTranslate = async () => {
     if (!inputPrompt.trim()) return;
@@ -176,6 +236,7 @@ export default function TranslatorPage() {
           persona,
           commandType,
           characterName: characterName.trim() || 'Player',
+          slangLevel,
           endpoint,
           apiKey,
           model
@@ -192,7 +253,8 @@ export default function TranslatorPage() {
         commandFormatted: data.commandFormatted,
         alternatives: data.alternatives || [],
         notes: data.notes || '',
-        modelUsed: data.modelUsed || model
+        modelUsed: data.modelUsed || model,
+        slangLevel
       };
       setResult(newResult);
 
@@ -205,6 +267,7 @@ export default function TranslatorPage() {
         persona,
         commandType,
         characterName: characterName.trim() || 'Player',
+        slangLevel,
         timestamp: Date.now()
       };
       const updatedHistory = [newHistoryItem, ...history.slice(0, 19)];
@@ -226,7 +289,8 @@ export default function TranslatorPage() {
   };
 
   const copyText = (text: string, type: 'raw' | 'command') => {
-    navigator.clipboard.writeText(text);
+    const clean = text.replace(/^["']|["']$/g, '');
+    navigator.clipboard.writeText(clean);
     if (type === 'raw') {
       setCopiedRaw(true);
       setTimeout(() => setCopiedRaw(false), 2000);
@@ -256,41 +320,50 @@ export default function TranslatorPage() {
                 <span className="font-extrabold tracking-wider text-base text-white">
                   SAMP<span className="text-cyan-400">RP</span> TRANSLATOR
                 </span>
-                <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                  ANTI-KAKU
+                <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                  WHITE UK BIKER
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 hidden sm:block">
-                Natural GTA San Andreas Roleplay English • Biker, Gang, & Action (/me)
+                Tingkat Slang Dapat Disesuaikan • Scrape Model Langsung dari Server
               </p>
             </div>
           </div>
 
-          {/* Right Action buttons */}
+          {/* Quick Model Selector in Navbar */}
           <div className="flex items-center space-x-2">
-            {/* Active Model Indicator */}
-            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="font-mono text-slate-300 text-[11px]">
-                {model.replace('oc/', '')}
-              </span>
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="bg-transparent text-slate-200 font-mono text-[11px] focus:outline-none cursor-pointer max-w-[140px] sm:max-w-[200px] truncate"
+                title="Pilih Model AI Aktif"
+              >
+                {availableModels.map((m) => (
+                  <option key={m.id} value={m.id} className="bg-slate-900 text-white">
+                    {m.id}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Biker Slang Glossary Button */}
             <button
               onClick={() => setIsGlossaryOpen(true)}
               className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-cyan-500/30 bg-cyan-950/40 hover:bg-cyan-900/40 text-cyan-300 text-xs font-medium transition"
+              title="Kamus Slang Biker List Slank.txt"
             >
               <BookOpen className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Kamus Slang Biker</span>
+              <span className="hidden md:inline">Kamus Slang</span>
             </button>
 
             {/* Settings Modal Button */}
             <button
               onClick={() => setIsSettingsOpen(true)}
               className="p-2 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white transition"
-              title="Pengaturan Endpoint & Model LLM"
+              title="Pengaturan Endpoint, Scrape Models & API Key"
             >
               <SettingsIcon className="w-4 h-4" />
             </button>
@@ -300,13 +373,14 @@ export default function TranslatorPage() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 space-y-6">
-        {/* Top Control Bar: Character Name & Command Type */}
+        
+        {/* Row 1: Character Name & SAMP Command */}
         <div className="p-4 rounded-2xl border border-slate-800 bg-[#0d1324]/80 backdrop-blur-sm grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Character Name */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
               <span>Nama Karakter Roleplay</span>
-              <span className="text-[10px] text-slate-500 font-mono">Format: Firstname_Lastname</span>
+              <span className="text-[10px] text-slate-500 font-mono">Contoh: Harold_Ortega</span>
             </label>
             <input
               type="text"
@@ -348,13 +422,57 @@ export default function TranslatorPage() {
           </div>
         </div>
 
+        {/* Row 2: Slang Level Selector (Pengatur Tingkatan Slang) */}
+        <div className="p-4 rounded-2xl border border-slate-800/90 bg-[#0c1221] space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-white flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Tingkat Kepadatan Slang (Slang Level)</span>
+            </label>
+            <span className="text-[11px] text-slate-400">
+              Pilih seberapa santai / kental slang yang diinginkan
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {SLANG_LEVELS.map((lvl) => {
+              const isSelected = slangLevel === lvl.id;
+              return (
+                <button
+                  key={lvl.id}
+                  type="button"
+                  onClick={() => setSlangLevel(lvl.id)}
+                  className={`p-3 rounded-xl border text-left transition relative flex flex-col justify-between ${
+                    isSelected
+                      ? 'border-cyan-400 bg-cyan-950/40 shadow-lg shadow-cyan-950/50 ring-1 ring-cyan-400'
+                      : 'border-slate-800/80 bg-slate-900/40 hover:bg-slate-900/80 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`text-xs font-bold ${isSelected ? 'text-cyan-300' : 'text-slate-200'}`}>
+                      {lvl.label}
+                    </span>
+                    {isSelected && <span className="w-2 h-2 rounded-full bg-cyan-400"></span>}
+                  </div>
+                  <div className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">
+                    {lvl.desc}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Persona Selector Chips */}
         <div className="space-y-2">
-          <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            Pilih Persona & Gaya Bicara Roleplay
+          <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              Gaya Karakter Roleplay (White UK Biker Lore Focus)
+            </span>
+            <span className="text-[10px] text-slate-500">Khusus British / Rocker, dilarang AAVE black slang</span>
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             {PERSONAS.map((p) => {
               const Icon = p.icon;
               const isActive = persona === p.id;
@@ -476,12 +594,12 @@ export default function TranslatorPage() {
             {errorMsg && (
               <div className="p-4 rounded-2xl bg-red-950/30 border border-red-800/60 text-red-300 text-xs space-y-1">
                 <div className="font-bold flex items-center gap-1.5">
-                  <Skull className="w-4 h-4 text-red-400" />
+                  <Shield className="w-4 h-4 text-red-400" />
                   Gagal Memanggil LLM:
                 </div>
                 <div>{errorMsg}</div>
                 <div className="text-[11px] text-slate-400 mt-2">
-                  Tips: Cek pengaturan model/endpoint di tombol gear kanan atas. Anda bisa mengganti ke model backup seperti <code>oc/deepseek-v4-flash-free</code>.
+                  Tips: Coba pilih model lain di dropdown kanan atas atau klik tombol gear pengaturan.
                 </div>
               </div>
             )}
@@ -493,7 +611,7 @@ export default function TranslatorPage() {
                 </div>
                 <p className="text-xs font-medium text-slate-400">Belum ada hasil terjemahan</p>
                 <p className="text-[11px] text-slate-600 max-w-xs">
-                  Ketik kalimat di sebelah kiri atau pilih contoh cepat, lalu klik &quot;TERJEMAHKAN KE BAHASA RP&quot;.
+                  Ketik kalimat di sebelah kiri, pilih tingkat slang yang cocok, lalu klik &quot;TERJEMAHKAN KE BAHASA RP&quot;.
                 </p>
               </div>
             )}
@@ -502,7 +620,7 @@ export default function TranslatorPage() {
               <div className="h-full min-h-[220px] rounded-2xl border border-slate-800 bg-[#090d18]/60 flex flex-col items-center justify-center p-6 text-center space-y-3">
                 <div className="w-10 h-10 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
                 <p className="text-xs text-cyan-300 font-medium font-mono animate-pulse">
-                  AI sedang meracik dialog roleplay natural...
+                  AI sedang meracik dialog roleplay natural ({slangLevel} slang)...
                 </p>
               </div>
             )}
@@ -513,9 +631,14 @@ export default function TranslatorPage() {
                 <div className="p-5 rounded-2xl border border-cyan-500/30 bg-[#0b1222] shadow-xl space-y-4">
                   {/* English output */}
                   <div className="space-y-1">
-                    <span className="text-[10px] uppercase tracking-wider font-mono text-cyan-400 font-bold">
-                      Natural English RP
-                    </span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase tracking-wider font-mono text-cyan-400 font-bold">
+                        Natural English RP
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+                        Level: {slangLevel.toUpperCase()}
+                      </span>
+                    </div>
                     <p className="text-base sm:text-lg font-semibold text-white leading-relaxed font-sans">
                       &quot;{result.translation.replace(/^["']|["']$/g, '')}&quot;
                     </p>
@@ -543,7 +666,7 @@ export default function TranslatorPage() {
                   {/* Notes / Slang Explanation */}
                   {result.notes && (
                     <div className="text-xs bg-slate-900/80 p-3 rounded-xl border border-slate-800/60 text-slate-400 space-y-1">
-                      <span className="font-semibold text-cyan-300">Penjelasan Gaya & Slang:</span>
+                      <span className="font-semibold text-cyan-300">Penjelasan Gaya & Nada:</span>
                       <p className="leading-relaxed text-[11px] text-slate-300">{result.notes}</p>
                     </div>
                   )}
@@ -613,7 +736,7 @@ export default function TranslatorPage() {
                       EN: &quot;{item.translation}&quot;
                     </div>
                     <div className="text-[10px] text-slate-500 font-mono">
-                      {item.characterName} • {item.commandType} • {item.persona}
+                      {item.characterName} • {item.commandType} • {item.persona} • Slang: {item.slangLevel || 'light'}
                     </div>
                   </div>
                   <button
@@ -634,10 +757,10 @@ export default function TranslatorPage() {
       <footer className="border-t border-slate-800/80 bg-[#060912] py-4 text-center text-xs text-slate-500">
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>
-            SAMP RP Translator • Didesain khusus untuk komunitas GTA SAMP & Roleplay
+            SAMP RP Translator • White UK Biker & Ace Cafe Lore Edition
           </span>
           <span className="font-mono text-cyan-400 text-[11px]">
-            Model: oc/mimo-v2.6-flash-free • Deployable to Vercel
+            Model: {model} • Ready for vercel.app
           </span>
         </div>
       </footer>
@@ -661,6 +784,8 @@ export default function TranslatorPage() {
         setApiKey={setApiKey}
         model={model}
         setModel={setModel}
+        availableModels={availableModels}
+        setAvailableModels={setAvailableModels}
       />
     </div>
   );

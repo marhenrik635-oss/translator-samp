@@ -5,52 +5,65 @@ const DEFAULT_ENDPOINT = process.env.DEFAULT_LLM_ENDPOINT || 'https://rnrbmqc.ab
 const DEFAULT_KEY = process.env.DEFAULT_LLM_API_KEY || 'sk-dccd02cc8ccf53e8-zqx07k-0f0bc410';
 const DEFAULT_MODEL = process.env.DEFAULT_LLM_MODEL || 'oc/mimo-v2.6-flash-free';
 
-// Fallback models if primary model is unavailable or encounters error
+// Fallback models in priority order
 const BACKUP_MODELS = [
-  'oc/deepseek-v4-flash-free',
-  'oc/glm-5.3-flash-free',
-  'oc/nemotron-3.5-lightning-free',
-  'oc/mimo-v2.5-free'
+  'ag/claude-sonnet-4-6',
+  'ag/gemini-3.8-flash',
+  'ag/gpt-oss-120b-medium',
+  'oc/mimo-v2.6-flash-free',
+  'oc/deepseek-v4-flash-free'
 ];
 
-function buildSystemPrompt(persona: string, commandType: string, characterName: string): string {
+function buildSystemPrompt(
+  persona: string, 
+  commandType: string, 
+  characterName: string, 
+  slangLevel: string
+): string {
+  let slangInstruction = "";
+  if (slangLevel === 'none') {
+    slangInstruction = "SLANG LEVEL: NONE (STANDARD / CLEAN RP ENGLISH). Do NOT use heavy street slang or local slurs. Translate into clean, natural, immersive, conversational English without sounding robotic or formal like a textbook.";
+  } else if (slangLevel === 'light') {
+    slangInstruction = "SLANG LEVEL: LIGHT / CASUAL (SLIGHT TOUCH). Use natural conversational idioms and very subtle British/street colloquialisms (e.g., 'mate', 'reckon', 'proper', 'fair enough'). Keep it light, smooth, and easy to read. Do not oversaturate with heavy jargon.";
+  } else if (slangLevel === 'medium') {
+    slangInstruction = "SLANG LEVEL: MEDIUM (BALANCED RP STREET). A solid, balanced roleplay flavor. Authentic conversational flow with natural vocabulary suitable for the character persona.";
+  } else {
+    slangInstruction = "SLANG LEVEL: HEAVY (FULL CULTURE IMMERSION). Use authentic subculture vocabulary (e.g. traditional British biker, rocker, cafe racer, mechanical terminology) without making it unintelligible.";
+  }
+
   return `You are the master English Roleplay (RP) Translator for GTA San Andreas Multiplayer (SAMP).
 Your job is to translate Indonesian player dialogue or roleplay actions into 100% natural, immersive, authentic English.
 
-CRITICAL RULES:
+CRITICAL INSTRUCTIONS & STRICT CONSTRAINTS:
 1. DILARANG KERAS KAKU seperti Google Translate! No literal, robotic word-for-word translation.
-   - Example BAD (Google): "Do you want to search problem with me?"
-   - Example GOOD (Roleplay): "You looking for beef with me, punk?" or "You wanna test me, dog?"
-2. Understand Indonesian slang, street terms, and abbreviations used by gamers:
-   (e.g., "cepu" = snitch/rat; "silop" = cops/fuzz/12; "sotot" = shootout; "cabut" = bounce/scram; "geber" = rev/blast; "jebol" = blown/busted; "bacot" = chatting shit/talking smack; "kompo" = scrap components; "beceng" = heat/piece/burner).
-3. Adapting to Roleplay Persona:
-   - If 'uk_biker' (UK Biker / Rocker / Cafe Racer): Inspired by Ace Cafe London & classic bike culture. Use UK slang naturally (mate, bruv, innit, bloke, old girl, thumper, throttle, ton, lid, ragged, custom, built not bought, grease). Do not force slang if it doesn't fit, but keep the authentic British biker cadence.
-   - If 'hood' (West Coast Gang / Hood): West Coast street dialogue (homie, dog, turf, fool, ain't, cops/12, heat, straight up, mess with).
-   - If 'chicano' (Latino / Chicano Vato): Hispanic/Mexican-American street swagger (vato, ese, carnal, hermano, cabron, de puta madre).
-   - If 'mobster' (Italian Mafia): Classic wise guy tone (fella, pal, capisce, whack, business, tone down).
-   - If 'police' (SAPD / Cop): Authoritative, tactical, professional law enforcement with 10-codes where appropriate (10-4, 10-20, suspect, non-compliant, step out).
-   - If 'mechanic' (Garage / Tuning): Automobile & motorcycle shop talk (engine block, bodywork, torque, clip-ons, spark plug, transmission, paintjob).
-   - If 'casual': Everyday smooth, modern casual English without awkward formality.
-4. Roleplay Command Formatting:
+2. STRICT CULTURE / SLANG RULE:
+   - When using British / UK slang, use exclusively WHITE BRITISH / COCKNEY / WORKING-CLASS / ROCKER & BIKER UK slang (e.g., mate, bloke, lad, reckon, proper, dodgy, bollocks, bloody, innit, cheer, gaffer, old girl, sorted).
+   - STRICTLY FORBIDDEN: DO NOT use African-American Vernacular English (AAVE) or UK drill/black slang (STRICTLY NO: 'n-word', 'bruv/mandem' forced overuse, 'fam', 'cuz', 'blood', 'wagwan', 'wasteman', 'opp', 'finna', 'trippin', etc.). Keep it strictly classic White UK Rocker / Biker / Working-class English or natural casual conversational English.
+3. ${slangInstruction}
+4. Adhere to User Slang Level:
+   - If user sets Slang Level to None or Light, do NOT over-slang the output. Keep it clean, fluid, and natural.
+5. Understand Indonesian street words, gamer lingo, and samp context:
+   ("cepu" = snitch/rat; "silop" = cops/police; "sotot" = shootout/gunfire; "cabut" = leave/take off; "geber" = rev the engine; "jebol" = blown/busted/broken; "bacot" = talking rubbish/nonsense; "kompo" = scrap components; "beceng" = piece/gun).
+6. Roleplay Command Formatting:
    - Command Type: '${commandType}', Character Name: '${characterName || 'Character'}'.
-   - If command is 'me' or action: Write in third-person present tense starting with a vivid action verb (e.g. "reaches into his leather jacket...", "pulls the throttle and revs...", "inspects the frame...").
-   - If command is 'do': Describe the state, physical observation, or environment in passive or objective voice (e.g. "The motorcycle engine emits thick white smoke as oil drips onto the asphalt.").
-   - If command is 'says', 'shouts', or 'whispers': Produce direct quoted dialogue suitable for SAMP in-game chat.
+   - If command is 'me': Write third-person present tense starting with a vivid action verb (e.g., "reaches into his jacket...", "cranks the throttle...", "inspects the engine block...").
+   - If command is 'do': Objective observation or environmental state (e.g., "The motorcycle engine emits thick white smoke as oil drips onto the pavement.").
+   - If command is 'says', 'shouts', 'whispers': Natural direct spoken dialogue.
 
-REFERENCE BIKER SLANG (FROM BIKER / ROCKER LORE):
+REFERENCE BIKER / ROCKER DICTIONARY:
 ${BIKER_SLANG_TEXT}
 
 RESPONSE FORMAT:
 You MUST return ONLY valid JSON matching this structure:
 {
-  "translation": "The best, most natural translation",
-  "commandFormatted": "Formatted with SAMP prefix, e.g.: Harold Ortega says: ... OR * Harold Ortega reaches into... OR (( The engine is smoking. ((Harold Ortega)) ))",
+  "translation": "The best, most natural translation matching the requested slang level",
+  "commandFormatted": "Formatted with SAMP prefix, e.g.: Harold Ortega says: ... OR * Harold Ortega reaches into...",
   "alternatives": [
-    { "label": "Casual / Chill", "text": "alternative translation 1" },
-    { "label": "More Aggressive / Raw", "text": "alternative translation 2" },
-    { "label": "Heavy Slang", "text": "alternative translation 3" }
+    { "label": "Clean / Natural", "text": "alternative with minimal slang" },
+    { "label": "Moderate Vibe", "text": "alternative with balanced flavor" },
+    { "label": "Raw / Expressive", "text": "alternative with stronger expression" }
   ],
-  "notes": "Short Indonesian breakdown of why these words were chosen and the nuance behind them."
+  "notes": "Short Indonesian breakdown of the chosen words, tone, and why it fits the slang level."
 }`;
 }
 
@@ -74,7 +87,7 @@ async function callChatCompletion(
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage }
       ],
-      response_format: { type: 'json_object' },
+      stream: false,
       max_tokens: 750,
       temperature: 0.7,
     }),
@@ -85,25 +98,42 @@ async function callChatCompletion(
     throw new Error(`Model ${model} failed (${response.status}): ${errorText}`);
   }
 
-  const data = await response.json();
+  const rawText = await response.text();
+
+  // Handle case where endpoint returns Server-Sent Events (SSE / streaming) even if stream: false
+  if (rawText.startsWith('data:')) {
+    const lines = rawText.split('\n');
+    let accumulatedContent = '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('data:') && !trimmed.includes('[DONE]')) {
+        try {
+          const jsonStr = trimmed.replace(/^data:\s*/, '');
+          const chunk = JSON.parse(jsonStr);
+          const delta = chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.message?.content || '';
+          accumulatedContent += delta;
+        } catch (_) {}
+      }
+    }
+    if (accumulatedContent) return accumulatedContent;
+  }
+
+  const data = JSON.parse(rawText);
   const choice = data.choices?.[0];
   if (!choice) {
     throw new Error('No completion choice returned from API');
   }
 
-  // Handle models that output inside content or reasoning
   const rawContent = choice.message?.content || choice.text || '';
   return rawContent;
 }
 
 function cleanAndParseJSON(raw: string) {
-  // Strip special tokens like <|im_end|>, markdown code fences
   let cleaned = raw
     .replace(/<\|im_end\|>/g, '')
     .replace(/<\|endoftext\|>/g, '')
     .trim();
 
-  // Remove markdown codeblock if present
   if (cleaned.startsWith('```json')) {
     cleaned = cleaned.replace(/^```json/, '');
   } else if (cleaned.startsWith('```')) {
@@ -114,7 +144,6 @@ function cleanAndParseJSON(raw: string) {
   }
   cleaned = cleaned.trim();
 
-  // Find first { and last }
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -132,6 +161,7 @@ export async function POST(req: NextRequest) {
       persona = 'uk_biker',
       commandType = 'says',
       characterName = 'Harold Ortega',
+      slangLevel = 'light',
       endpoint = DEFAULT_ENDPOINT,
       apiKey = DEFAULT_KEY,
       model = DEFAULT_MODEL
@@ -144,10 +174,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const systemPrompt = buildSystemPrompt(persona, commandType, characterName);
+    const systemPrompt = buildSystemPrompt(persona, commandType, characterName, slangLevel);
     const userMessage = `Character: ${characterName}
 Command: ${commandType}
 Persona: ${persona}
+Slang Level: ${slangLevel}
 Indonesian Input: "${text.trim()}"
 
 Please translate into natural, living RP English according to the prompt instructions.`;
@@ -163,7 +194,6 @@ Please translate into natural, living RP English according to the prompt instruc
       console.warn(`Primary model ${model} failed, trying backups:`, err.message);
       errors.push(`${model}: ${err.message}`);
 
-      // Try fallback models
       for (const backup of BACKUP_MODELS) {
         if (backup === model) continue;
         try {
@@ -191,7 +221,6 @@ Please translate into natural, living RP English according to the prompt instruc
     try {
       parsed = cleanAndParseJSON(rawOutput);
     } catch (parseErr) {
-      // Fallback if JSON parsing fails: return the text directly
       parsed = {
         translation: rawOutput.replace(/<\|im_end\|>/g, '').trim(),
         commandFormatted: `${characterName} ${commandType}: ${rawOutput.trim()}`,
@@ -200,7 +229,17 @@ Please translate into natural, living RP English according to the prompt instruc
       };
     }
 
-    // Format SAMP command string if not already done nicely
+    // Format alternatives if strings
+    let altList: { label: string; text: string }[] = [];
+    if (Array.isArray(parsed.alternatives)) {
+      altList = parsed.alternatives.map((a: any, idx: number) => {
+        if (typeof a === 'string') {
+          return { label: `Opsi ${idx + 1}`, text: a };
+        }
+        return { label: a.label || `Opsi ${idx + 1}`, text: a.text || String(a) };
+      });
+    }
+
     let formattedCommand = parsed.commandFormatted;
     const translation = parsed.translation || '';
     if (!formattedCommand) {
@@ -221,12 +260,13 @@ Please translate into natural, living RP English according to the prompt instruc
       success: true,
       translation: parsed.translation,
       commandFormatted: formattedCommand,
-      alternatives: parsed.alternatives || [],
+      alternatives: altList,
       notes: parsed.notes || '',
       modelUsed: usedModel,
       persona,
       commandType,
-      characterName
+      characterName,
+      slangLevel
     });
 
   } catch (error: any) {
