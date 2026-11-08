@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #090d16;
+  --foreground: #e2e8f0;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Custom GTA / SAMP Glowing Accent & Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0d121f;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+.samp-glow-cyan {
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.45);
+}
+
+.samp-glow-green {
+  text-shadow: 0 0 10px rgba(34, 197, 94, 0.45);
+}
+
+.samp-chat-font {
+  font-family: "Lucida Console", "Consolas", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: 0.2px;
+}
